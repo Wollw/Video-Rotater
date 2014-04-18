@@ -7,6 +7,7 @@ using namespace std;
 using namespace cv;
 
 DEFINE_bool(display, true, "Display video in window.");
+DEFINE_bool(verbose, false, "Display video in window.");
 DEFINE_string(save, "", "Save output to file.");
 
 int main(int argc, char **argv)
@@ -47,6 +48,9 @@ int main(int argc, char **argv)
 
     for (int j = 0; j < height; j++)
     {
+        if (FLAGS_verbose)
+            cout << "Frame " << j+1 << " of " << height << "." << endl;
+
         for (int i = 0; i < frame_count; i++) {
             vc >> frame_in;
             frame_in.row(j).copyTo(frame_out.row(i));
