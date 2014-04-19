@@ -7,8 +7,9 @@ using namespace std;
 using namespace cv;
 
 DEFINE_bool(display, true, "Display video in window.");
-DEFINE_bool(verbose, false, "Display video in window.");
-DEFINE_string(save, "", "Save output to file.");
+DEFINE_bool(quiet, false, "Suppress terminal output.");
+DEFINE_string(save, "output.avi", "Save output to file.");
+DEFINE_string(axis, "y", "Axis of rotation.");
 
 int main(int argc, char **argv)
 {
@@ -24,17 +25,23 @@ int main(int argc, char **argv)
 
     Mat frame_in;
     vc >> frame_in;
-    Mat frame_out(frame_in.size(), frame_in.type()); // don't copy
     vc.set(CV_CAP_PROP_POS_FRAMES, 0);
 
     int width = vc.get(CV_CAP_PROP_FRAME_WIDTH);
     int height = vc.get(CV_CAP_PROP_FRAME_HEIGHT);
     int frame_count = vc.get(CV_CAP_PROP_FRAME_COUNT);
-    
-    frame_out.resize(frame_count);
-    for (int i = 0; i < frame_count; i++) {
-        frame_in.row(0).copyTo(frame_out.row(i));
+
+    Size s;
+    if (FLAGS_axis == "x") {
+        s = Size(width, frame_count);
+    } else if (FLAGS_axis == "y") {
+        s = Size(frame_count, height);
+    } else {
+        cout << "Invalid axis of rotation.";
+        return 1;
     }
+
+    Mat frame_out(s, frame_in.type());
 
     if (FLAGS_display)
         namedWindow(argv[0],1);
@@ -42,18 +49,22 @@ int main(int argc, char **argv)
     VideoWriter vw;
     if (!FLAGS_save.empty()) {
         int ex = CV_FOURCC('I', 'Y', 'U', 'V');
-        Size s = Size(width, frame_count);
         vw.open(FLAGS_save, ex, vc.get(CV_CAP_PROP_FPS), s);
+        cout << "Saving to " << FLAGS_save << endl;
     }
 
-    for (int j = 0; j < height; j++)
+    int frame_out_count = FLAGS_axis == "x" ? height : width;
+    for (int j = 0; j < frame_out_count; j++)
     {
-        if (FLAGS_verbose)
-            cout << "Frame " << j+1 << " of " << height << "." << endl;
+        if (!FLAGS_quiet)
+            cout << "Frame " << j+1 << " of " << frame_out_count << "." << endl;
 
         for (int i = 0; i < frame_count; i++) {
             vc >> frame_in;
-            frame_in.row(j).copyTo(frame_out.row(i));
+            if (FLAGS_axis == "x")
+                frame_in.row(j).copyTo(frame_out.row(i));
+            else
+                frame_in.col(j).copyTo(frame_out.col(i));
         }
         vc.set(CV_CAP_PROP_POS_FRAMES, 0);
 
