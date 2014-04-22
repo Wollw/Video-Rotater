@@ -8,7 +8,7 @@ using namespace cv;
 
 DEFINE_bool(display, true, "Display video in window.");
 DEFINE_bool(quiet, false, "Suppress terminal output.");
-DEFINE_string(save, "output.avi", "Save output to file.");
+DEFINE_string(save, "", "Save output to file.");
 DEFINE_string(axis, "y", "Axis of rotation.");
 
 int main(int argc, char **argv)
