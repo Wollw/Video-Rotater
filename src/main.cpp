@@ -2,6 +2,7 @@
 #include <highgui.h>
 #include <iostream>
 #include <gflags/gflags.h>
+#include <cstdlib>
 
 using namespace std;
 using namespace cv;
@@ -11,70 +12,120 @@ DEFINE_bool(quiet, false, "Suppress terminal output.");
 DEFINE_string(save, "", "Save output to file.");
 DEFINE_string(axis, "y", "Axis of rotation.");
 
-int main(int argc, char **argv)
-{
-    google::ParseCommandLineFlags(&argc, &argv, true);
+enum axis_enum {
+    AXIS_X,
+    AXIS_Y,
+    AXIS_T
+};
 
-    if (argc !=2) {
-        cout << "usage: " << argv[0] << " input-video" << endl;
-        return -1;
+typedef struct options_struct {
+    enum axis_enum axis;
+    Size size;
+    int frame_count;
+    VideoCapture *video_src;
+    VideoWriter *video_dst;
+} options_type;
+
+options_type * create_options(int *argc, char ***argv) {
+    google::ParseCommandLineFlags(argc, argv, true);
+    options_type *o = (options_type *) calloc(1, sizeof(options_type));
+    
+    string input_file = (*argv)[(*argc) - 1];
+    if (*argc != 2) {
+        cout << "usage: " << *argv[0] << " input-video" << endl;
+        free(o);
+        return NULL;
     }
 
-    VideoCapture vc(argv[argc-1]);
-    if(!vc.isOpened()) return -1;
+    // open input video
+    o->video_src = new VideoCapture(input_file);
+    if(!o->video_src->isOpened()) return NULL;
+
+    // get axis
+    if (FLAGS_axis == "x") {
+        o->axis = AXIS_X;
+    } else if (FLAGS_axis == "y") {
+        o->axis = AXIS_Y;
+    } else if (FLAGS_axis == "t") {
+        o->axis = AXIS_T;
+    } else {
+        free(o);
+        return NULL;
+    }
+
+    // get size of output video
+    int width = o->video_src->get(CV_CAP_PROP_FRAME_WIDTH);
+    int height = o->video_src->get(CV_CAP_PROP_FRAME_HEIGHT);
+    int frame_count = o->video_src->get(CV_CAP_PROP_FRAME_COUNT);
+    if (FLAGS_axis == "x") {
+        o->size = Size(width, frame_count);
+        o->frame_count = height;
+    } else if (FLAGS_axis == "y") {
+        o->size = Size(frame_count, height);
+        o->frame_count = width;
+    } else {
+        free(o);
+        return NULL;
+    }
+
+    // get output video
+    if (!FLAGS_save.empty()) {
+        o->video_dst = new VideoWriter;
+        int ex = CV_FOURCC('I', 'Y', 'U', 'V');
+        o->video_dst->open(
+                FLAGS_save, ex,
+                o->video_src->get(CV_CAP_PROP_FPS),
+                o->size);
+    }
+
+    return o;
+
+}
+
+int main(int argc, char **argv) {
+
+    options_type *o = create_options(&argc, &argv);
 
     Mat frame_in;
-    vc >> frame_in;
-    vc.set(CV_CAP_PROP_POS_FRAMES, 0);
-
-    int width = vc.get(CV_CAP_PROP_FRAME_WIDTH);
-    int height = vc.get(CV_CAP_PROP_FRAME_HEIGHT);
-    int frame_count = vc.get(CV_CAP_PROP_FRAME_COUNT);
-
-    Size s;
-    if (FLAGS_axis == "x") {
-        s = Size(width, frame_count);
-    } else if (FLAGS_axis == "y") {
-        s = Size(frame_count, height);
-    } else {
-        cout << "Invalid axis of rotation.";
-        return 1;
-    }
-
-    Mat frame_out(s, frame_in.type());
+    *(o->video_src) >> frame_in;
+    Mat frame_out(o->size, frame_in.type());
 
     if (FLAGS_display)
         namedWindow(argv[0],1);
 
-    VideoWriter vw;
-    if (!FLAGS_save.empty()) {
-        int ex = CV_FOURCC('I', 'Y', 'U', 'V');
-        vw.open(FLAGS_save, ex, vc.get(CV_CAP_PROP_FPS), s);
-        cout << "Saving to " << FLAGS_save << endl;
-    }
+    int frame_count_src = o->video_src->get(CV_CAP_PROP_FRAME_COUNT);
+    for (int j = 0; j < o->frame_count; j++) {
 
-    int frame_out_count = FLAGS_axis == "x" ? height : width;
-    for (int j = 0; j < frame_out_count; j++)
-    {
+        // Output status to console
         if (!FLAGS_quiet)
-            cout << "Frame " << j+1 << " of " << frame_out_count << "." << endl;
+            cout << "Frame " << j+1 << " of " << o->frame_count << "." << endl;
 
-        for (int i = 0; i < frame_count; i++) {
-            vc >> frame_in;
-            if (FLAGS_axis == "x")
-                frame_in.row(j).copyTo(frame_out.row(i));
-            else
-                frame_in.col(j).copyTo(frame_out.col(i));
+        // Create a new frame.
+        o->video_src->set(CV_CAP_PROP_POS_FRAMES, 0);
+        for (int i = 0; i < frame_count_src; i++) {
+            *(o->video_src) >> frame_in;
+            switch (o->axis) {
+                case AXIS_X:
+                    frame_in.row(j).copyTo(frame_out.row(i));
+                    break;
+                case AXIS_Y:
+                    frame_in.col(j).copyTo(frame_out.col(i));
+                    break;
+                default:
+                    cout << "UNIMPLEMENTED" << endl;
+                    return -1;
+            }
         }
-        vc.set(CV_CAP_PROP_POS_FRAMES, 0);
 
+        // Display window
         if (FLAGS_display) {
             imshow(argv[0], frame_out);
-            if(waitKey(30) == 0x1B /* ESC */ ) break;
+            if(waitKey(30) == 0x1B ) break;
         }
 
+        // Save frame to file
         if (!FLAGS_save.empty())
-            vw.write(frame_out);
+            o->video_dst->write(frame_out);
 
     }
     return 0;
