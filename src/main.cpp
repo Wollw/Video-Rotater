@@ -120,7 +120,7 @@ int main(int argc, char **argv) {
         // Display window
         if (FLAGS_display) {
             imshow(argv[0], frame_out);
-            if(waitKey(30) == 0x1B ) break;
+            waitKey(30);
         }
 
         // Save frame to file
