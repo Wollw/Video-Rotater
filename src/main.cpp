@@ -30,7 +30,6 @@ options_type * create_options(int *argc, char ***argv) {
     google::ParseCommandLineFlags(argc, argv, true);
     options_type *o = (options_type *) calloc(1, sizeof(options_type));
     
-    string input_file = (*argv)[(*argc) - 1];
     if (*argc != 2) {
         cout << "usage: " << *argv[0] << " input-video" << endl;
         free(o);
@@ -38,6 +37,7 @@ options_type * create_options(int *argc, char ***argv) {
     }
 
     // open input video
+    string input_file = (*argv)[(*argc) - 1];
     o->video_src = new VideoCapture(input_file);
     if(!o->video_src->isOpened()) return NULL;
 
@@ -128,5 +128,10 @@ int main(int argc, char **argv) {
             o->video_dst->write(frame_out);
 
     }
+
+    delete o->video_src;
+    delete o->video_dst;
+    free(o);
+
     return 0;
 }
