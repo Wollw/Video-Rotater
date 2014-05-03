@@ -90,8 +90,10 @@ int main(int argc, char **argv) {
     *(o->video_src) >> frame_in;
     Mat frame_out(o->size, frame_in.type());
 
-    if (FLAGS_display)
-        namedWindow(argv[0],1);
+    if (FLAGS_display) {
+        namedWindow(argv[0],CV_WINDOW_NORMAL);
+        setWindowProperty(argv[0], CV_WND_PROP_FULLSCREEN, CV_WINDOW_FULLSCREEN);
+    }
 
     int frame_count_src = o->video_src->get(CV_CAP_PROP_FRAME_COUNT);
     for (int j = 0; j < o->frame_count; j++) {
