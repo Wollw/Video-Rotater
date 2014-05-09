@@ -1,3 +1,4 @@
+#include <signal.h>
 #include <cv.h>
 #include <highgui.h>
 #include <iostream>
@@ -99,6 +100,7 @@ options_type * create_options(int *argc, char ***argv) {
 }
 
 int main(int argc, char **argv) {
+   signal(SIGINT, SIG_IGN); 
 
     options_type *o = create_options(&argc, &argv);
     if (o == NULL)
