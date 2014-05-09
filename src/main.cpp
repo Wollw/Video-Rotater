@@ -128,9 +128,11 @@ int video_live_filter(options_type *o, char *window_name) {
 
     list<Mat> frame_list;
     for (int i = 0; i < o->frame_count; i++) {
-        cout << "Frame " << i << " of " << o->frame_count << endl;
+        cout << "Frame " << i+1 << " of " << o->frame_count << endl;
+        if (waitKey(1) == '')
+            return 0;
         *(o->video_src) >> frame_in;
-        frame_list.push_back(frame_in);
+        frame_list.push_back(frame_in.clone());
     }
 
     int j = 0;
@@ -140,24 +142,33 @@ int video_live_filter(options_type *o, char *window_name) {
         for (list<Mat>::iterator it = frame_list.begin(); it != frame_list.end(); it++) {
             switch (o->axis) {
                 case AXIS_X:
-                    it->col(j).copyTo(frame_out.col(i++));
+                    it->row(j).copyTo(frame_out.row(i));
                     break;
                 case AXIS_Y:
-                    it->col(j).copyTo(frame_out.col(i++));
+                    it->col(j).copyTo(frame_out.col(i));
                     break;
                 default:
                     cout << "UNIMPLEMENTED" << endl;
                     return -1;
             }
+            i++;
         }
+        if (j == o->frame_count - 1) {
+            d = -1;
+        } else if (j == 0) {
+            d = 1;
+        }
+        j += d;
+
+
         imshow(window_name, frame_out);
-        waitKey(30);
+        if (waitKey(1) == '')
+            return 0;
 
         *(o->video_src) >> frame_in;
-        frame_list.push_back(frame_in);
+        frame_list.push_back(frame_in.clone());
         frame_list.pop_front();
     }
-        
 
 }
 
@@ -193,7 +204,8 @@ int video_file_filter(options_type *o, char *window_name) {
         // Display window
         if (FLAGS_display) {
             imshow(window_name, frame_out);
-            waitKey(30);
+            if (waitKey(1) == '')
+                return 0;
         }
 
         // Save frame to file
