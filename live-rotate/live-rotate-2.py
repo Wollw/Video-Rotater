@@ -1,6 +1,7 @@
 #!/usr/bin/env python2
 import cv2
 import numpy
+import random
 from collections import deque
 
 cv2.namedWindow('frame',cv2.WINDOW_NORMAL)
@@ -22,11 +23,19 @@ while len(queue) < height:
 frame = queue[0]
 
 
+j = 0;
+d = 1;
 while 1:
     for i in range(0,height):
-        frame[i] =  queue[i][i].copy()
+        frame[i] =  queue[i][j % height].copy()
     cv2.imshow('frame', frame)
     if cv2.waitKey(1) == ord(''):
         break
     queue.popleft()
     queue.append(vc.read()[1])
+
+    if j == height-1:
+        d = -1
+    elif j == 0:
+        d = 1
+    j = j + d
