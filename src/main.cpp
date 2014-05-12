@@ -13,11 +13,8 @@ DEFINE_bool(display, true, "Display video in window.");
 DEFINE_bool(quiet, false, "Suppress terminal output.");
 DEFINE_string(save, "", "Save output to file.");
 DEFINE_string(axis, "y", "Axis of rotation.");
-<<<<<<< HEAD
 DEFINE_double(fps, 24, "Frame per second for output.");
-=======
 DEFINE_bool(live, false, "Use live feed.");
->>>>>>> 6c09269a7e533537e925e1ccd7d831b5e3c6ee1d
 
 enum axis_enum {
     AXIS_X,
