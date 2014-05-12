@@ -11,6 +11,7 @@ DEFINE_bool(display, true, "Display video in window.");
 DEFINE_bool(quiet, false, "Suppress terminal output.");
 DEFINE_string(save, "", "Save output to file.");
 DEFINE_string(axis, "y", "Axis of rotation.");
+DEFINE_double(fps, 24, "Frame per second for output.");
 
 enum axis_enum {
     AXIS_X,
@@ -72,10 +73,7 @@ options_type * create_options(int *argc, char ***argv) {
     if (!FLAGS_save.empty()) {
         o->video_dst = new VideoWriter;
         int ex = CV_FOURCC('I', 'Y', 'U', 'V');
-        o->video_dst->open(
-                FLAGS_save, ex,
-                o->video_src->get(CV_CAP_PROP_FPS),
-                o->size);
+        o->video_dst->open(FLAGS_save, ex, FLAGS_fps, o->size);
     }
 
     return o;
