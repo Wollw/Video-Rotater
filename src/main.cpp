@@ -120,7 +120,9 @@ options_type * create_options(int *argc, char ***argv) {
 }
 
 int main(int argc, char **argv) {
-   signal(SIGINT, SIG_IGN); 
+    signal(SIGINT, SIG_IGN); 
+
+    google::SetUsageMessage("Rotate video in time.");
 
     options_type *o = create_options(&argc, &argv);
     if (o == NULL)
