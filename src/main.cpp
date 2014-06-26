@@ -2,9 +2,10 @@
 #include <cv.h>
 #include <highgui.h>
 #include <iostream>
-#include <gflags/gflags.h>
 #include <cstdlib>
 #include <list>
+
+#include <gflags/gflags.h>
 
 using namespace std;
 using namespace cv;
@@ -15,6 +16,19 @@ DEFINE_string(save, "", "Save output to file.");
 DEFINE_string(axis, "y", "Axis of rotation.");
 DEFINE_double(fps, 24, "Frame per second for output.");
 DEFINE_bool(live, false, "Use live feed.");
+DEFINE_int32(postrotate, 0, "Rotation of final frames to fix flipped source video.\n"
+                            "\t0\tNo rotation\n"
+                            "\t1\t90 degrees clockwise\n"
+                            "\t2\t90 degrees counter-clockwise\n"
+                            "\t3\t180 degrees\n"
+                            );
+
+enum postrotate_enum {
+    ROT_NONE,
+    ROT_90CW,
+    ROT_90CCW,
+    ROT_180
+};
 
 enum axis_enum {
     AXIS_X,
@@ -29,6 +43,7 @@ typedef struct options_struct {
     VideoCapture *video_src;
     VideoWriter *video_dst;
     bool live;
+    enum postrotate_enum postrotate;
 } options_type;
 
 int video_file_filter(options_type *o, char *window_name);
@@ -46,6 +61,9 @@ options_type * create_options(int *argc, char ***argv) {
         free(o);
         return NULL;
     }
+
+    // Prerotation?
+    o->postrotate = (enum postrotate_enum)FLAGS_postrotate;
 
     // open input video
     if (o->live) {
@@ -90,7 +108,11 @@ options_type * create_options(int *argc, char ***argv) {
     if (!FLAGS_save.empty()) {
         o->video_dst = new VideoWriter;
         int ex = CV_FOURCC('I', 'Y', 'U', 'V');
-        o->video_dst->open(FLAGS_save, ex, FLAGS_fps, o->size);
+        if (o->postrotate == ROT_NONE || o->postrotate == ROT_180) {
+            o->video_dst->open(FLAGS_save, ex, FLAGS_fps, o->size);
+        } else {
+            o->video_dst->open(FLAGS_save, ex, FLAGS_fps, Size(o->size.height, o->size.width));
+        }
     }
 
     return o;
@@ -201,16 +223,31 @@ int video_file_filter(options_type *o, char *window_name) {
             }
         }
 
+
+        // Do any postrotation required before finishing frame.
+        Mat f;
+        if (o->postrotate == ROT_90CW) {
+            transpose(frame_out, f);
+            flip(f, f, 1);
+        } else if (o->postrotate == ROT_90CCW) {
+            transpose(frame_out, f);
+            flip(f, f, 0);
+        } else if (o->postrotate == ROT_180) {
+            flip(frame_out, f, -1);
+        } else {
+            f = frame_out;
+        }
+        
         // Display window
         if (FLAGS_display) {
-            imshow(window_name, frame_out);
+            imshow(window_name, f);
             if (waitKey(1) == '')
                 return 0;
         }
 
         // Save frame to file
         if (!FLAGS_save.empty())
-            o->video_dst->write(frame_out);
+            o->video_dst->write(f);
 
     }
 }
