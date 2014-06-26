@@ -3,6 +3,7 @@
 #include <highgui.h>
 #include <iostream>
 #include <cstdlib>
+#include <cstdio>
 #include <list>
 
 #include <gflags/gflags.h>
@@ -121,6 +122,7 @@ options_type * create_options(int *argc, char ***argv) {
 
 int main(int argc, char **argv) {
     signal(SIGINT, SIG_IGN); 
+    setbuf(stdout, NULL);
 
     google::SetUsageMessage("Rotate video in time.");
 
@@ -206,7 +208,7 @@ int video_file_filter(options_type *o, char *window_name) {
 
         // Output status to console
         if (!FLAGS_quiet)
-            cout << "Frame " << j+1 << " of " << o->frame_count << "." << endl;
+            printf("Frame %d of %d...",j + 1, o->frame_count);
 
         // Create a new frame.
         o->video_src->set(CV_CAP_PROP_POS_FRAMES, 0);
@@ -225,6 +227,10 @@ int video_file_filter(options_type *o, char *window_name) {
             }
         }
 
+
+        if (o->postrotate != ROT_NONE) {
+            printf("postrotation...");
+        }
 
         // Do any postrotation required before finishing frame.
         Mat f;
@@ -248,8 +254,12 @@ int video_file_filter(options_type *o, char *window_name) {
         }
 
         // Save frame to file
-        if (!FLAGS_save.empty())
+        if (!FLAGS_save.empty()) {
+            printf("writing...");
             o->video_dst->write(f);
+        }
+        
+        printf("done.\n");
 
     }
 }
