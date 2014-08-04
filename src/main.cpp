@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <signal.h>
 #include <cv.h>
 #include <highgui.h>
@@ -5,18 +6,19 @@
 #include <cstdlib>
 #include <cstdio>
 #include <list>
+#include <unistd.h>
 
 #include <gflags/gflags.h>
 
 using namespace std;
 using namespace cv;
 
-DEFINE_bool(display, true, "Display video in window.");
+DEFINE_bool(display, false, "Display video in window.");
 DEFINE_bool(quiet, false, "Suppress terminal output.");
 DEFINE_string(save, "", "Save output to file.");
 DEFINE_string(axis, "y", "Axis of rotation.");
 DEFINE_double(fps, 24, "Frame per second for output.");
-DEFINE_bool(live, false, "Use live feed.");
+DEFINE_double(threadcount, 4, "Thread count.");
 DEFINE_int32(postrotate, 0, "Rotation of final frames to fix flipped source video.\n"
                             "\t0\tNo rotation\n"
                             "\t1\t90 degrees clockwise\n"
@@ -41,39 +43,36 @@ typedef struct options_struct {
     enum axis_enum axis;
     Size size;
     int frame_count;
-    VideoCapture *video_src;
+    VideoCapture **video_srcs;
     VideoWriter *video_dst;
-    bool live;
     enum postrotate_enum postrotate;
 } options_type;
 
+typedef struct {
+    unsigned int thread_id;
+    unsigned int thread_count;
+    int current_frame;
+    options_type *options;
+    Mat frame_in;
+    Mat frame_out;
+} thread_data;
+
 int video_file_filter(options_type *o, char *window_name);
-int video_live_filter(options_type *o, char *window_name);
 
 options_type * create_options(int *argc, char ***argv) {
     google::ParseCommandLineFlags(argc, argv, true);
     options_type *o = (options_type *) calloc(1, sizeof(options_type));
     
-    if (FLAGS_live && *argc == 1) {
-        o->live = true;
-    } else if (*argc != 2) {
-        o->live = false;
-        cout << "usage: " << *argv[0] << " input-video" << endl;
-        free(o);
-        return NULL;
-    }
-
     // Prerotation?
     o->postrotate = (enum postrotate_enum)FLAGS_postrotate;
 
     // open input video
-    if (o->live) {
-        o->video_src = new VideoCapture(0);
-    } else {
+    o->video_srcs = (VideoCapture**)malloc(sizeof(VideoCapture*) * FLAGS_threadcount);
+    for (int i = 0; i < FLAGS_threadcount; i++) {
         string input_file = (*argv)[(*argc) - 1];
-        o->video_src = new VideoCapture(input_file);
+        o->video_srcs[i] = new VideoCapture(input_file);
+        if(!o->video_srcs[i]->isOpened()) return NULL;
     }
-    if(!o->video_src->isOpened()) return NULL;
 
     // get axis
     if (FLAGS_axis == "x") {
@@ -88,13 +87,10 @@ options_type * create_options(int *argc, char ***argv) {
     }
 
     // get size of output video
-    int width = o->video_src->get(CV_CAP_PROP_FRAME_WIDTH);
-    int height = o->video_src->get(CV_CAP_PROP_FRAME_HEIGHT);
-    int frame_count = o->video_src->get(CV_CAP_PROP_FRAME_COUNT);
-    if (o->live) {
-        o->size = Size(width, height);
-        o->frame_count = FLAGS_axis == "x" ? height : width;
-    } else if (FLAGS_axis == "x") {
+    int width = o->video_srcs[0]->get(CV_CAP_PROP_FRAME_WIDTH);
+    int height = o->video_srcs[0]->get(CV_CAP_PROP_FRAME_HEIGHT);
+    int frame_count = o->video_srcs[0]->get(CV_CAP_PROP_FRAME_COUNT);
+    if (FLAGS_axis == "x") {
         o->size = Size(width, frame_count);
         o->frame_count = height;
     } else if (FLAGS_axis == "y") {
@@ -114,6 +110,9 @@ options_type * create_options(int *argc, char ***argv) {
         } else {
             o->video_dst->open(FLAGS_save, ex, FLAGS_fps, Size(o->size.height, o->size.width));
         }
+    } else {
+        cout << "Output file required." << endl;
+        return NULL;
     }
 
     return o;
@@ -121,7 +120,6 @@ options_type * create_options(int *argc, char ***argv) {
 }
 
 int main(int argc, char **argv) {
-    signal(SIGINT, SIG_IGN); 
     setbuf(stdout, NULL);
 
     google::SetUsageMessage("Rotate video in time.");
@@ -135,98 +133,74 @@ int main(int argc, char **argv) {
         setWindowProperty(argv[0], CV_WND_PROP_FULLSCREEN, CV_WINDOW_FULLSCREEN);
     }
 
-    if (o->live)
-        video_live_filter(o, argv[0]);
-    else
-        video_file_filter(o, argv[0]);
+    video_file_filter(o, argv[0]);
 
-    delete o->video_src;
+    for (int i = 0; i < FLAGS_threadcount; i++) {
+        delete o->video_srcs[i];
+    }
+    free(o->video_srcs);
     delete o->video_dst;
     free(o);
 
     return 0;
 }
 
-int video_live_filter(options_type *o, char *window_name) {
-    Mat frame_in;
-    *(o->video_src) >> frame_in;
-    Mat frame_out(o->size, frame_in.type());
+void *rotate_frame_(void *vdata) {
+    thread_data *data = (thread_data*)vdata;
+    options_type *o = data->options;
+    int j = data->current_frame;
+    VideoCapture *vs = o->video_srcs[data->thread_id];
+    int frame_count_src = vs->get(CV_CAP_PROP_FRAME_COUNT);
+    vs->set(CV_CAP_PROP_POS_FRAMES, 0);
+    for (int i = data->thread_id; i < frame_count_src; i+=data->thread_count) {
+        *(vs) >> data->frame_in;
+        switch (o->axis) {
+            case AXIS_X:
+                data->frame_in.row(j).copyTo(data->frame_out.row(i));
+                break;
+            case AXIS_Y:
+                data->frame_in.col(j).copyTo(data->frame_out.col(i));
+                break;
+            default:
+                cout << "UNIMPLEMENTED" << endl;
+                return NULL;
+        }
+    }
+}
 
-    list<Mat> frame_list;
-    for (int i = 0; i < o->frame_count; i++) {
-        cout << "Frame " << i+1 << " of " << o->frame_count << endl;
-        if (waitKey(1) == '')
-            return 0;
-        *(o->video_src) >> frame_in;
-        frame_list.push_back(frame_in.clone());
+void rotate_frame(options_type *o, int current_frame, Mat fin, Mat fout) {
+    int thread_count = FLAGS_threadcount;
+    pthread_t threads[thread_count];
+    int irets[thread_count];
+    thread_data data[thread_count];
+
+    for (unsigned int i = 0; i < thread_count; i++) {
+        data[i] = thread_data{i, thread_count, current_frame, o, fin, fout};
+        irets[i] = pthread_create(&threads[i], NULL, rotate_frame_, &data[i]);
+        if (irets[i]) {
+            fprintf(stderr,"Error - pthread_create() return code: %d\n",irets[i]);
+            exit(EXIT_FAILURE);
+        }
     }
 
-    int j = 0;
-    int d = 1;
-    for (;;) {
-        int i = 0;
-        for (list<Mat>::iterator it = frame_list.begin(); it != frame_list.end(); it++) {
-            switch (o->axis) {
-                case AXIS_X:
-                    it->row(j).copyTo(frame_out.row(i));
-                    break;
-                case AXIS_Y:
-                    it->col(j).copyTo(frame_out.col(i));
-                    break;
-                default:
-                    cout << "UNIMPLEMENTED" << endl;
-                    return -1;
-            }
-            i++;
-        }
-        if (j == o->frame_count - 1) {
-            d = -1;
-        } else if (j == 0) {
-            d = 1;
-        }
-        j += d;
-
-
-        imshow(window_name, frame_out);
-        if (waitKey(1) == '')
-            return 0;
-
-        *(o->video_src) >> frame_in;
-        frame_list.push_back(frame_in.clone());
-        frame_list.pop_front();
+    for (unsigned int i = 0; i < thread_count; i++) {
+        pthread_join(threads[i], NULL);
     }
-
 }
 
 int video_file_filter(options_type *o, char *window_name) {
     Mat frame_in;
-    *(o->video_src) >> frame_in;
+    *(o->video_srcs[0]) >> frame_in;
     Mat frame_out(o->size, frame_in.type());
 
-    int frame_count_src = o->video_src->get(CV_CAP_PROP_FRAME_COUNT);
+    int frame_count_src = o->video_srcs[0]->get(CV_CAP_PROP_FRAME_COUNT);
     for (int j = 0; j < o->frame_count; j++) {
 
         // Output status to console
         if (!FLAGS_quiet)
             printf("Frame %d of %d...",j + 1, o->frame_count);
 
-        // Create a new frame.
-        o->video_src->set(CV_CAP_PROP_POS_FRAMES, 0);
-        for (int i = 0; i < frame_count_src; i++) {
-            *(o->video_src) >> frame_in;
-            switch (o->axis) {
-                case AXIS_X:
-                    frame_in.row(j).copyTo(frame_out.row(i));
-                    break;
-                case AXIS_Y:
-                    frame_in.col(j).copyTo(frame_out.col(i));
-                    break;
-                default:
-                    cout << "UNIMPLEMENTED" << endl;
-                    return -1;
-            }
-        }
-
+        rotate_frame(o, j, frame_in, frame_out);
 
         if (o->postrotate != ROT_NONE) {
             printf("postrotation...");
@@ -245,7 +219,7 @@ int video_file_filter(options_type *o, char *window_name) {
         } else {
             f = frame_out;
         }
-        
+
         // Display window
         if (FLAGS_display) {
             imshow(window_name, f);
